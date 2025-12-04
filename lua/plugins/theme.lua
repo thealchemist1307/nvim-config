@@ -1,0 +1,1 @@
+/home/nishit/.config/omarchy/current/theme/neovim.lua
