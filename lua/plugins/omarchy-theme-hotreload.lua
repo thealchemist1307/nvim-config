@@ -1,3 +1,8 @@
+local join = (vim.fs and vim.fs.joinpath) or function(...)
+	local sep = package.config:sub(1, 1)
+	return table.concat({ ... }, sep)
+end
+
 return {
 	{
 		name = "theme-hotreload",
@@ -5,7 +10,7 @@ return {
 		lazy = false,
 		priority = 1000,
 		config = function()
-			local transparency_file = vim.fn.stdpath("config") .. "/plugin/after/transparency.lua"
+			local transparency_file = join(vim.fn.stdpath("config"), "plugin", "after", "transparency.lua")
 
 			vim.api.nvim_create_autocmd("User", {
 				pattern = "LazyReload",
@@ -42,7 +47,7 @@ return {
 							local plugin = require("lazy.core.config").plugins[theme_plugin_name]
 							if plugin then
 								-- Unload all lua modules from the plugin directory
-								local plugin_dir = plugin.dir .. "/lua"
+								local plugin_dir = join(plugin.dir, "lua")
 								require("lazy.core.util").walkmods(plugin_dir, function(modname)
 									package.loaded[modname] = nil
 									package.preload[modname] = nil

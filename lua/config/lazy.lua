@@ -1,4 +1,9 @@
-local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
+local join = (vim.fs and vim.fs.joinpath) or function(...)
+  local sep = package.config:sub(1, 1)
+  return table.concat({ ... }, sep)
+end
+
+local lazypath = join(vim.fn.stdpath("data"), "lazy", "lazy.nvim")
 if not (vim.uv or vim.loop).fs_stat(lazypath) then
   local lazyrepo = "https://github.com/folke/lazy.nvim.git"
   local out = vim.fn.system({ "git", "clone", "--filter=blob:none", "--branch=stable", lazyrepo, lazypath })
