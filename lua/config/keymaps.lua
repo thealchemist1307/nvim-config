@@ -5,6 +5,11 @@
 local map = vim.keymap.set
 local ts = vim.treesitter
 
+local get_node_text = ts.get_node_text
+if not get_node_text and vim.treesitter.query and vim.treesitter.query.get_node_text then
+  get_node_text = vim.treesitter.query.get_node_text
+end
+
 local html_tag_config = {
   match_field_by_type = {
     start_tag = "end_tag",
@@ -45,14 +50,65 @@ local parser_overrides = {
   tsx = "tsx",
 }
 
+local function resolve_lang(ft)
+  if not ft then
+    return nil
+  end
+
+  if ts.language and ts.language.get_lang then
+    local ok, resolved = pcall(ts.language.get_lang, ft)
+    if ok and resolved then
+      return resolved
+    end
+  end
+
+  return parser_overrides[ft] or ft
+end
+
+local function get_tag_tree_context()
+  local ft = vim.bo.filetype
+  local config = tag_configs[ft]
+  if not config then
+    return nil, nil, "unsupported"
+  end
+
+  local lang = resolve_lang(ft)
+  local parser_ok, parser = pcall(ts.get_parser, 0, lang)
+  if not parser_ok then
+    return nil, nil, "no_parser"
+  end
+
+  local first_tree = parser:parse()[1]
+  if not first_tree then
+    return nil, nil, "parse_failed"
+  end
+
+  return config, first_tree:root()
+end
+
 local error_messages = {
-  unsupported = "`<leader>dx` only works inside HTML / JSX buffers",
-  no_parser = "Install a tree-sitter parser for this filetype to use `<leader>dx`",
+  unsupported = "HTML tag helpers only work inside HTML / JSX buffers",
+  no_parser = "Install a tree-sitter parser for this filetype to use the HTML tag helpers",
   parse_failed = "Tree-sitter could not parse this buffer",
-  not_on_tag = "Place the cursor inside an opening/closing tag before pressing `<leader>dx`",
+  not_on_tag = "Place the cursor inside an opening/closing tag before using this mapping",
   no_parent = "Unable to locate the wrapping element for this tag",
   no_match = "No matching HTML tag found (is it self-closing?)",
 }
+
+local div_error_messages = vim.tbl_extend("force", {}, error_messages, {
+  no_div = "Place the cursor inside a <div> before pressing `at`",
+  no_next = "No more <div> tags were found after the current selection",
+})
+
+local function notify_tag_error(err, messages)
+  if not err then
+    return
+  end
+  local lookup = messages or error_messages
+  if lookup and lookup[err] then
+    vim.notify(lookup[err], vim.log.levels.WARN)
+  end
+end
 
 local function get_match_targets(config, node_type)
   if not (config and node_type) then
@@ -91,46 +147,9 @@ local function find_child_by_type(node, target_type)
   return nil
 end
 
-local function find_matching_tag()
-  local ft = vim.bo.filetype
-  local config = tag_configs[ft]
-  if not config then
-    return nil, "unsupported"
-  end
-
-  local lang = nil
-  if ts.language and ts.language.get_lang then
-    local ok, resolved = pcall(ts.language.get_lang, ft)
-    if ok then
-      lang = resolved
-    end
-  end
-  lang = lang or parser_overrides[ft] or ft
-
-  local parser_ok, parser = pcall(ts.get_parser, 0, lang)
-  if not parser_ok then
-    return nil, "no_parser"
-  end
-
-  local first_tree = parser:parse()[1]
-  if not first_tree then
-    return nil, "parse_failed"
-  end
-
-  local cursor = vim.api.nvim_win_get_cursor(0)
-  local row, col = cursor[1] - 1, cursor[2]
-  local node = first_tree:root():named_descendant_for_range(row, col, row, col)
-
-  while node do
-    local field_target, type_target = get_match_targets(config, node:type())
-    if field_target or type_target then
-      break
-    end
-    node = node:parent()
-  end
-
-  if not node then
-    return nil, "not_on_tag"
+local function find_matching_tag_for_node(config, node)
+  if not (config and node) then
+    return nil, "no_match"
   end
 
   local parent = node:parent()
@@ -142,8 +161,6 @@ local function find_matching_tag()
 
   local match
   if target_field then
-    -- Prefer child_by_field_name when available (Neovim 0.10+),
-    -- but fall back to :field for older releases.
     if parent.child_by_field_name then
       match = parent:child_by_field_name(target_field)
     elseif parent.field then
@@ -163,12 +180,282 @@ local function find_matching_tag()
   return match
 end
 
+local function find_matching_tag()
+  local config, root, err = get_tag_tree_context()
+  if not config then
+    return nil, err
+  end
+
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  local row, col = cursor[1] - 1, cursor[2]
+  local node = root:named_descendant_for_range(row, col, row, col)
+
+  while node do
+    local field_target, type_target = get_match_targets(config, node:type())
+    if field_target or type_target then
+      break
+    end
+    node = node:parent()
+  end
+
+  if not node then
+    return nil, "not_on_tag"
+  end
+
+  local match
+  match, err = find_matching_tag_for_node(config, node)
+  if not match then
+    return nil, err
+  end
+
+  return match
+end
+
+local function normalize_range(range)
+  if not range then
+    return nil
+  end
+  local sr, sc, er, ec = range[1], range[2], range[3], range[4]
+  if sr > er or (sr == er and sc > ec) then
+    sr, sc, er, ec = er, ec, sr, sc
+  end
+  return { sr, sc, er, ec }
+end
+
+local function ranges_equal(a, b)
+  if not (a and b) then
+    return false
+  end
+  for i = 1, 4 do
+    if a[i] ~= b[i] then
+      return false
+    end
+  end
+  return true
+end
+
+local function get_visual_range()
+  local mode = vim.fn.mode()
+  if mode ~= "v" and mode ~= "V" and mode ~= "\22" then
+    return nil
+  end
+  local start_pos = vim.fn.getpos("v")
+  local end_pos = vim.fn.getpos(".")
+  if not (start_pos and end_pos) then
+    return nil
+  end
+  local sr, sc = start_pos[2] - 1, start_pos[3] - 1
+  local er, ec = end_pos[2] - 1, end_pos[3] - 1
+  return normalize_range({ sr, sc, er, ec })
+end
+
+local function apply_visual_range(range)
+  local normalized = normalize_range(range)
+  if not normalized then
+    return
+  end
+  local sr, sc, er, ec = normalized[1], normalized[2], normalized[3], normalized[4]
+  vim.cmd("normal! \\<Esc>")
+  vim.api.nvim_win_set_cursor(0, { sr + 1, sc })
+  vim.cmd("normal! v")
+  vim.api.nvim_win_set_cursor(0, { er + 1, ec })
+end
+
+local function compare_pos(row1, col1, row2, col2)
+  if row1 ~= row2 then
+    return row1 < row2 and -1 or 1
+  end
+  if col1 ~= col2 then
+    return col1 < col2 and -1 or 1
+  end
+  return 0
+end
+
+local tag_name_fallbacks =
+  { "tag_name", "identifier", "property_identifier", "nested_identifier", "jsx_namespace_name" }
+
+local function get_tag_name(node)
+  if not (node and get_node_text) then
+    return nil
+  end
+
+  local name_node
+  if node.child_by_field_name then
+    name_node = node:child_by_field_name("name")
+  elseif node.field then
+    local nodes = node:field("name")
+    name_node = nodes and nodes[1]
+  end
+
+  if not name_node then
+    for _, type_name in ipairs(tag_name_fallbacks) do
+      name_node = find_child_by_type(node, type_name)
+      if name_node then
+        break
+      end
+    end
+  end
+
+  if not name_node then
+    return nil
+  end
+
+  local ok, text = pcall(get_node_text, name_node, 0)
+  if not ok then
+    return nil
+  end
+
+  return text
+end
+
+local function is_div_tag(node)
+  local name = get_tag_name(node)
+  if not name then
+    return false
+  end
+  return name:lower() == "div"
+end
+
+local start_tag_types = {
+  start_tag = true,
+  jsx_opening_element = true,
+}
+
+local element_types = {
+  element = true,
+  jsx_element = true,
+}
+
+local function compute_div_selection(start_tag, closing_tag)
+  if not (start_tag and closing_tag) then
+    return nil
+  end
+  local sr, sc = start_tag:start()
+  local er, ec_exclusive = closing_tag:end_()
+  local range = { sr, sc, er, math.max(ec_exclusive - 1, 0) }
+  return {
+    range = range,
+    next_search = { er, ec_exclusive },
+    start = { sr, sc },
+  }
+end
+
+local function find_div_element_at_position(config, root, row, col)
+  if not (config and root) then
+    return nil, "unsupported"
+  end
+
+  local node = root:named_descendant_for_range(row, col, row, col)
+  while node do
+    local node_type = node:type()
+    if start_tag_types[node_type] and is_div_tag(node) then
+      local closing, match_err = find_matching_tag_for_node(config, node)
+      if closing then
+        return compute_div_selection(node, closing)
+      end
+      return nil, match_err
+    elseif element_types[node_type] then
+      local count = node:named_child_count()
+      for i = 0, count - 1 do
+        local child = node:named_child(i)
+        if child and start_tag_types[child:type()] then
+          if is_div_tag(child) then
+            local closing, match_err = find_matching_tag_for_node(config, child)
+            if closing then
+              return compute_div_selection(child, closing)
+            end
+            return nil, match_err
+          end
+          break
+        end
+      end
+    end
+    node = node:parent()
+  end
+
+  return nil, "no_div"
+end
+
+local function find_next_div_element(config, root, row, col)
+  if not (config and root and row and col) then
+    return nil, "no_next"
+  end
+
+  local best
+
+  local function traverse(node)
+    if not node then
+      return
+    end
+    local node_type = node:type()
+    if start_tag_types[node_type] and is_div_tag(node) then
+      local sr, sc = node:start()
+      if compare_pos(sr, sc, row, col) > 0 then
+        local closing = select(1, find_matching_tag_for_node(config, node))
+        if closing then
+          local selection = compute_div_selection(node, closing)
+          if selection then
+            if not best or compare_pos(selection.start[1], selection.start[2], best.start[1], best.start[2]) < 0 then
+              best = selection
+            end
+          end
+        end
+      end
+    end
+
+    local count = node:named_child_count()
+    for i = 0, count - 1 do
+      traverse(node:named_child(i))
+    end
+  end
+
+  traverse(root)
+
+  if not best then
+    return nil, "no_next"
+  end
+
+  return best
+end
+
+local div_selection_state = {}
+
+local function select_div_text_object()
+  local config, root, err = get_tag_tree_context()
+  if not config then
+    notify_tag_error(err, div_error_messages)
+    return
+  end
+
+  local bufnr = vim.api.nvim_get_current_buf()
+  local current_range = get_visual_range()
+  local state = div_selection_state[bufnr]
+
+  local selection
+  if state and state.range and current_range and ranges_equal(state.range, current_range) and state.next_search then
+    selection, err = find_next_div_element(config, root, state.next_search[1], state.next_search[2])
+  else
+    local cursor = vim.api.nvim_win_get_cursor(0)
+    selection, err = find_div_element_at_position(config, root, cursor[1] - 1, cursor[2])
+  end
+
+  if not selection then
+    notify_tag_error(err or "no_div", div_error_messages)
+    div_selection_state[bufnr] = nil
+    return
+  end
+
+  apply_visual_range(selection.range)
+  div_selection_state[bufnr] = {
+    range = normalize_range(selection.range),
+    next_search = selection.next_search,
+  }
+end
+
 local function jump_between_html_tags()
   local match, err = find_matching_tag()
   if not match then
-    if error_messages[err] then
-      vim.notify(error_messages[err], vim.log.levels.WARN)
-    end
+    notify_tag_error(err)
     return
   end
 
@@ -178,6 +465,9 @@ end
 
 -- 1. Jump between matching HTML/JSX tags only
 map("n", "<leader>dx", jump_between_html_tags, { desc = "Jump between HTML tags" })
+
+-- 1a. Select div tags and advance to the next on repeat
+map("x", "at", select_div_text_object, { desc = "Select <div> (repeat for next)" })
 
 -- 1b. Close the current tab quickly
 map("n", "<leader>cq", "<cmd>tabclose<cr>", { desc = "Close current tab" })

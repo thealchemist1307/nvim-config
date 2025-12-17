@@ -5,3 +5,4 @@ vim.opt.relativenumber = true
 local opt = vim.opt
 
 opt.clipboard = "unnamedplus"
+vim.opt.updatetime = 200
