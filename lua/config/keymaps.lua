@@ -479,3 +479,36 @@ map({ "n", "x" }, "D", '"_D', { desc = "Delete line without yanking" })
 -- (optional) If you also want `c` to not clobber clipboard, uncomment:
 map({ "n", "x" }, "c", '"_c', { desc = "Change without yanking" })
 map("n", "C", '"_C', { desc = "Change to end without yanking" })
+
+-- Terminal: escape to normal mode (for Codex/any TUI)
+vim.keymap.set("t", "<F6>", [[<C-\><C-n>]], {
+  silent = true,
+  desc = "Terminal: navigate/copy (normal mode)",
+})
+
+vim.api.nvim_create_autocmd("TermOpen", {
+  callback = function(ev)
+    local name = vim.api.nvim_buf_get_name(ev.buf) -- e.g. term://.../codex...
+    if not name:lower():find("codex") then
+      return
+    end
+
+    -- Ctrl+t: terminal -> normal (Neovim navigation)
+    vim.keymap.set("t", "<C-t>", [[<C-\><C-n>]], {
+      buffer = ev.buf,
+      silent = true,
+      nowait = true,
+      desc = "Codex: terminal -> normal (navigate output)",
+    })
+
+    -- Ctrl+t: normal -> terminal typing
+    vim.keymap.set("n", "<C-t>", "i", {
+      buffer = ev.buf,
+      silent = true,
+      nowait = true,
+      desc = "Codex: normal -> terminal (type)",
+    })
+  end,
+})
+-- Optional: make <C-w> work inside terminals again
+-- vim.o.termwinkey = "<C-w>"
