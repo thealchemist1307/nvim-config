@@ -4,6 +4,7 @@
 
 local map = vim.keymap.set
 local ts = vim.treesitter
+local LazyVim = require("lazyvim.util")
 
 local get_node_text = ts.get_node_text
 if not get_node_text and vim.treesitter.query and vim.treesitter.query.get_node_text then
@@ -480,34 +481,46 @@ map({ "n", "x" }, "D", '"_D', { desc = "Delete line without yanking" })
 map({ "n", "x" }, "c", '"_c', { desc = "Change without yanking" })
 map("n", "C", '"_C', { desc = "Change to end without yanking" })
 
+-- Terminal toggles: allow hiding/reopening the Snacks terminal with <leader>ft
+map({ "n", "t" }, "<leader>ft", function()
+  Snacks.terminal(nil, { cwd = LazyVim.root() })
+end, { desc = "Terminal (Root Dir)" })
+
 -- Terminal: escape to normal mode (for Codex/any TUI)
 vim.keymap.set("t", "<F6>", [[<C-\><C-n>]], {
   silent = true,
   desc = "Terminal: navigate/copy (normal mode)",
 })
 
+local function set_ctrl_t_terminal_keymaps(buf, label)
+  local prefix = label or "Terminal"
+  vim.keymap.set("t", "<C-t>", [[<C-\><C-n>]], {
+    buffer = buf,
+    silent = true,
+    nowait = true,
+    desc = prefix .. ": terminal -> normal (navigate output)",
+  })
+
+  vim.keymap.set("n", "<C-t>", "i", {
+    buffer = buf,
+    silent = true,
+    nowait = true,
+    desc = prefix .. ": normal -> terminal (type)",
+  })
+end
+
 vim.api.nvim_create_autocmd("TermOpen", {
   callback = function(ev)
     local name = vim.api.nvim_buf_get_name(ev.buf) -- e.g. term://.../codex...
-    if not name:lower():find("codex") then
+    name = name and name:lower() or ""
+    local is_codex = name:find("codex", 1, true) ~= nil
+    local is_snacks_terminal = not is_codex and vim.bo[ev.buf].filetype == "snacks_terminal"
+    if not (is_codex or is_snacks_terminal) then
       return
     end
 
-    -- Ctrl+t: terminal -> normal (Neovim navigation)
-    vim.keymap.set("t", "<C-t>", [[<C-\><C-n>]], {
-      buffer = ev.buf,
-      silent = true,
-      nowait = true,
-      desc = "Codex: terminal -> normal (navigate output)",
-    })
-
-    -- Ctrl+t: normal -> terminal typing
-    vim.keymap.set("n", "<C-t>", "i", {
-      buffer = ev.buf,
-      silent = true,
-      nowait = true,
-      desc = "Codex: normal -> terminal (type)",
-    })
+    local label = is_codex and "Codex" or "Terminal"
+    set_ctrl_t_terminal_keymaps(ev.buf, label)
   end,
 })
 -- Optional: make <C-w> work inside terminals again
