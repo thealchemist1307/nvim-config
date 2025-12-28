@@ -14,3 +14,16 @@ vim.api.nvim_create_autocmd("FileType", {
     vim.cmd("silent! packadd matchit")
   end,
 })
+
+-- tsgo attaches automatically somewhere upstream; immediately stop it so only ts_ls remains
+vim.api.nvim_create_autocmd("LspAttach", {
+  group = vim.api.nvim_create_augroup("disable_tsgo_lsp", { clear = true }),
+  callback = function(event)
+    local client = vim.lsp.get_client_by_id(event.data.client_id)
+    if client and client.name == "tsgo" then
+      vim.schedule(function()
+        client.stop()
+      end)
+    end
+  end,
+})
