@@ -1,3 +1,71 @@
+-- Use the colorscheme's Normal background for all UI so the theme's solid color stays visible.
+local background_groups = {
+	"Normal",
+	"NormalFloat",
+	"FloatBorder",
+	"Pmenu",
+	"Terminal",
+	"EndOfBuffer",
+	"FoldColumn",
+	"Folded",
+	"SignColumn",
+	"NormalNC",
+	"WhichKeyFloat",
+	"TelescopeBorder",
+	"TelescopeNormal",
+	"TelescopePromptBorder",
+	"TelescopePromptTitle",
+	"NeoTreeNormal",
+	"NeoTreeNormalNC",
+	"NeoTreeVertSplit",
+	"NeoTreeWinSeparator",
+	"NeoTreeEndOfBuffer",
+	"NvimTreeNormal",
+	"NvimTreeVertSplit",
+	"NvimTreeEndOfBuffer",
+	"NotifyINFOBody",
+	"NotifyERRORBody",
+	"NotifyWARNBody",
+	"NotifyTRACEBody",
+	"NotifyDEBUGBody",
+	"NotifyINFOTitle",
+	"NotifyERRORTitle",
+	"NotifyWARNTitle",
+	"NotifyTRACETitle",
+	"NotifyDEBUGTitle",
+	"NotifyINFOBorder",
+	"NotifyERRORBorder",
+	"NotifyWARNBorder",
+	"NotifyTRACEBorder",
+	"NotifyDEBUGBorder",
+}
+
+local function normalize_hex(value)
+	if type(value) == "number" then
+		return string.format("#%06x", value)
+	end
+	return value
+end
+
+local function apply_solid_background()
+	local ok, normal = pcall(vim.api.nvim_get_hl, 0, { name = "Normal", link = false })
+	local bg = vim.o.background == "light" and "#ffffff" or "#000000"
+	if ok and normal and normal.bg then
+		bg = normalize_hex(normal.bg)
+	end
+
+	for _, group in ipairs(background_groups) do
+		vim.api.nvim_set_hl(0, group, { bg = bg })
+	end
+end
+
+apply_solid_background()
+
+vim.api.nvim_create_autocmd("ColorScheme", {
+	callback = apply_solid_background,
+})
+
+--[[
 -- transparent background
 vim.api.nvim_set_hl(0, "Normal", { bg = "none" })
 vim.api.nvim_set_hl(0, "NormalFloat", { bg = "none" })
@@ -43,3 +111,4 @@ vim.api.nvim_set_hl(0, "NotifyERRORBorder", { bg = "none" })
 vim.api.nvim_set_hl(0, "NotifyWARNBorder", { bg = "none" })
 vim.api.nvim_set_hl(0, "NotifyTRACEBorder", { bg = "none" })
 vim.api.nvim_set_hl(0, "NotifyDEBUGBorder", { bg = "none" })
+]]

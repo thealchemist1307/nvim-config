@@ -9,7 +9,7 @@ return {
     opts = function()
       return {
         ensure_installed = {
-          "tsserver",
+          "ts_ls",
           "eslint",
           "jsonls",
           "pyright",

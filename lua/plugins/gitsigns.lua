@@ -1,0 +1,46 @@
+return {
+  {
+    "lewis6991/gitsigns.nvim",
+    event = { "BufReadPre", "BufNewFile" },
+    opts = {
+      signs = {
+        add = { text = "│" },
+        change = { text = "│" },
+        delete = { text = "_" },
+        topdelete = { text = "‾" },
+        changedelete = { text = "~" },
+        untracked = { text = "┆" },
+      },
+      update_debounce = 100,
+      current_line_blame = false,
+      current_line_blame_opts = {
+        virt_text = true,
+        virt_text_pos = "eol",
+        delay = 300,
+      },
+      preview_config = {
+        border = "rounded",
+        style = "minimal",
+        relative = "cursor",
+        row = 0,
+        col = 1,
+      },
+    },
+    keys = {
+      { "]h", function() require("gitsigns").next_hunk() end, desc = "Next Git hunk" },
+      { "[h", function() require("gitsigns").prev_hunk() end, desc = "Prev Git hunk" },
+      { "<leader>tp", function() require("gitsigns").preview_hunk() end, desc = "Git: Preview hunk" },
+      { "<leader>ts", function() require("gitsigns").stage_hunk() end, desc = "Git: Stage hunk" },
+      { "<leader>tu", function() require("gitsigns").undo_stage_hunk() end, desc = "Git: Undo stage hunk" },
+      { "<leader>tr", function() require("gitsigns").reset_hunk() end, desc = "Git: Reset hunk" },
+      { "<leader>tS", function() require("gitsigns").stage_buffer() end, desc = "Git: Stage file" },
+      { "<leader>tR", function() require("gitsigns").reset_buffer() end, desc = "Git: Reset file" },
+      { "<leader>td", function() require("gitsigns").diffthis() end, desc = "Git: Diff (index vs working)" },
+      { "<leader>tD", function() require("gitsigns").diffthis("~") end, desc = "Git: Diff (vs last commit)" },
+      { "<leader>tb", function() require("gitsigns").blame_line({ full = true }) end, desc = "Git: Blame line" },
+      { "<leader>tB", function() require("gitsigns").toggle_current_line_blame() end, desc = "Git: Toggle inline blame" },
+      { "<leader>tt", function() require("gitsigns").toggle_deleted() end, desc = "Git: Toggle deleted lines" },
+      { "ih", ":<C-U>Gitsigns select_hunk<CR>", mode = { "o", "x" }, desc = "Select Git hunk" },
+    },
+  },
+}

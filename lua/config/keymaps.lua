@@ -473,6 +473,8 @@ map("x", "at", select_div_text_object, { desc = "Select <div> (repeat for next)"
 -- 1b. Close the current tab quickly
 map("n", "<leader>cq", "<cmd>tabclose<cr>", { desc = "Close current tab" })
 
+map("n", "<leader>wf", "<cmd>w<cr>", { desc = "Save file" })
+
 -- 2. Make `d` delete WITHOUT touching clipboard
 map({ "n", "x" }, "d", '"_d', { desc = "Delete without yanking" })
 map({ "n", "x" }, "D", '"_D', { desc = "Delete line without yanking" })

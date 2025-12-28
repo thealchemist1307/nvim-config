@@ -2,9 +2,9 @@ return {
   -- Formatting (on save)
   {
     "stevearc/conform.nvim",
-    opts = {
-      format_on_save = { timeout_ms = 2000, lsp_fallback = true },
-      formatters_by_ft = {
+    opts = function(_, opts)
+      opts.format_on_save = { timeout_ms = 2000, lsp_fallback = true }
+      opts.formatters_by_ft = vim.tbl_extend("force", opts.formatters_by_ft or {}, {
         -- Web
         javascript = { "prettier" },
         javascriptreact = { "prettier" },
@@ -27,14 +27,18 @@ return {
         -- C / C++
         c = { "clang_format" },
         cpp = { "clang_format" },
+      })
+    end,
+    keys = {
+      {
+        "<leader>cf",
+        function()
+          require("conform").format({ lsp_fallback = true })
+        end,
+        mode = { "n", "v" },
+        desc = "Format file/range",
       },
     },
-    config = function(_, opts)
-      require("conform").setup(opts)
-      vim.keymap.set({ "n", "v" }, "<leader>cf", function()
-        require("conform").format({ lsp_fallback = true })
-      end, { desc = "Format file/range" })
-    end,
   },
 
   -- Linting (diagnostics)
