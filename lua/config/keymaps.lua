@@ -322,84 +322,10 @@ local start_tag_types = {
   jsx_opening_element = true,
 }
 
-local end_tag_types = {
-  end_tag = true,
-  jsx_closing_element = true,
-}
-
-local self_closing_tag_types = {
-  self_closing_tag = true,
-  jsx_self_closing_element = true,
-}
-
 local element_types = {
   element = true,
   jsx_element = true,
 }
-
-local function compute_tag_range(start_node, end_node)
-  if not start_node then
-    return nil
-  end
-  end_node = end_node or start_node
-  local sr, sc = start_node:start()
-  local er, ec_exclusive = end_node:end_()
-  return { sr, sc, er, math.max(ec_exclusive - 1, 0) }
-end
-
-local function get_tag_selection_range(config, root, row, col)
-  if not (config and root) then
-    return nil, "unsupported"
-  end
-
-  local node = root:named_descendant_for_range(row, col, row, col)
-  while node do
-    local node_type = node:type()
-    if self_closing_tag_types[node_type] then
-      return compute_tag_range(node, node)
-    end
-
-    if start_tag_types[node_type] or end_tag_types[node_type] then
-      local match, match_err = find_matching_tag_for_node(config, node)
-      if not match then
-        return nil, match_err
-      end
-      local start_node = start_tag_types[node_type] and node or match
-      local end_node = start_tag_types[node_type] and match or node
-      return compute_tag_range(start_node, end_node)
-    end
-
-    if element_types[node_type] then
-      local start_child
-      local child_count = node.named_child_count and node:named_child_count() or 0
-      for i = 0, child_count - 1 do
-        local child = node:named_child(i)
-        if child then
-          local child_type = child:type()
-          if self_closing_tag_types[child_type] or start_tag_types[child_type] then
-            start_child = child
-            break
-          end
-        end
-      end
-
-      if start_child then
-        if self_closing_tag_types[start_child:type()] then
-          return compute_tag_range(start_child, start_child)
-        end
-        local closing, match_err = find_matching_tag_for_node(config, start_child)
-        if not closing then
-          return nil, match_err
-        end
-        return compute_tag_range(start_child, closing)
-      end
-    end
-
-    node = node:parent()
-  end
-
-  return nil, "not_on_tag"
-end
 
 local function compute_div_selection(start_tag, closing_tag)
   if not (start_tag and closing_tag) then
@@ -527,24 +453,6 @@ local function select_div_text_object()
   }
 end
 
-local function yank_current_html_tag()
-  local config, root, err = get_tag_tree_context()
-  if not config then
-    notify_tag_error(err)
-    return
-  end
-
-  local cursor = vim.api.nvim_win_get_cursor(0)
-  local range, range_err = get_tag_selection_range(config, root, cursor[1] - 1, cursor[2])
-  if not range then
-    notify_tag_error(range_err)
-    return
-  end
-
-  apply_visual_range(range)
-  vim.cmd("normal! y")
-end
-
 local function jump_between_html_tags()
   local match, err = find_matching_tag()
   if not match then
@@ -566,11 +474,6 @@ map("x", "at", select_div_text_object, { desc = "Select <div> (repeat for next)"
 map("n", "<leader>cq", "<cmd>tabclose<cr>", { desc = "Close current tab" })
 
 map("n", "<leader>wf", "<cmd>w<cr>", { desc = "Save file" })
-
-map("n", "<leader>yd", function()
-  vim.cmd("normal! 0v$%$y")
-end, { desc = "Run yank macro 0v$%$y" })
-map("n", "<leader>yD", yank_current_html_tag, { desc = "Yank surrounding HTML/JSX tag" })
 
 -- 2. Make `d` delete WITHOUT touching clipboard
 map({ "n", "x" }, "d", '"_d', { desc = "Delete without yanking" })
