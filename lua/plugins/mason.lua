@@ -19,6 +19,9 @@ return {
         automatic_installation = true,
         handlers = {
           function(server_name)
+            if server_name == "tsgo" then
+              return
+            end
             require("lspconfig")[server_name].setup({})
           end,
         },
